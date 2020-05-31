@@ -10,6 +10,7 @@
 
 int main(void)
 {
+	// Create storage for the state of the PRNG
 	ISAAC32 state;
 	
 	// Initialize state

@@ -6,13 +6,13 @@
 
 void test_statesize();
 void test_copystate();
+void test_readbuffer();
 void test_output();
 void test_initialization();
 void test_combined();
 void fail(const char *message);
 int  notsame(uint32_t *data1, uint32_t *data2, int size);
 void dump_hex(uint32_t *data, int size);
-
 void *data(int data_type);
 
 enum raw_data {
@@ -23,10 +23,15 @@ enum raw_data {
 	RANDVECT_OUTPUT,
 	LARGEPRIME_OUTPUT,
 	GIBIBYTE_OUTPUT,
-	COMBINED_OUTPUT
+	COMBINED_OUTPUT,
+	raw_data_count // Number of data blocks listed in enum raw_data
 };
 
-const long LargePrime = 1048583; // First prime above 1 MiB
+enum constant_values {
+	LargePrime = 1048583, // First prime above 1 MiB
+	output_size = 512,    // Just because randvect.txt stored 512 output values
+	seed_size = 1024      // Seeding uses 256 values, which is 1024 bytes
+};
 
 
 
@@ -36,6 +41,7 @@ int main(void)
 	
 	test_statesize();
 	test_copystate();
+	test_readbuffer();
 	test_output();
 	test_initialization();
 	test_combined();
@@ -67,14 +73,11 @@ void test_copystate()
 	printf("    - Checking isaac32_copyState: ");
 	fflush(stdout);
 	
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < raw_data_count; i++)
 	{
 		isaac32_copyState(state, data(i));
 		if (notsame(state, data(i), ISAAC32_STATESIZE))
-		{
-			printf("Test %i ", i);
 			fail("isaac32_copyState failed to create accurate copy");
-		}
 	}
 	
 	printf("PASS\n");
@@ -82,10 +85,47 @@ void test_copystate()
 
 
 
+void test_readbuffer()
+{
+	const int bufferTestSize = 2000;
+	const int repetitions = 1000;
+	
+	ISAAC32 state;
+	unsigned char buffer[bufferTestSize+1];
+	int len, i, repeat, under;
+	
+	printf("    - Checking buffer overfill/underfill: ");
+	fflush(stdout);
+	
+	isaac32_init(state);
+	
+	for (len = 0; len < bufferTestSize; len++)
+	{
+		for (i = 0; i <= bufferTestSize; i++) buffer[i] = 0; // Clear buffer
+		
+		under = 0; // If remains too small, we have an underfill
+		for (repeat = 0; repeat < repetitions; repeat++)
+		{
+			isaac32_read(buffer, len,  state);
+			if (len > 0 && buffer[len-1] > 0) under++;
+			if (buffer[len] > 0)
+				fail("isaac32_read overfilled data buffer");
+		}
+		
+		// Was the last requested byte nonzero at least 90% of the time?
+		if (len > 0 && under < (repetitions-(repetitions/10)))
+			fail("isaac32_read underfilled data buffer");
+	}
+	
+	printf("PASS\n");	
+}
+
+
+
 void test_output()
 {
 	ISAAC32 state;
-	uint32_t output[512];
+	uint32_t output[output_size];
 	
 	printf("    - Checking isaac32 output: ");
 	fflush(stdout);
@@ -98,10 +138,10 @@ void test_output()
 	for (int i = 0; i < 256; i++) // Discard first 256 values
 		isaac32(state);
 	
-	for (int i = 0; i < 512; i++) // Output next 512 values
+	for (int i = 0; i < output_size; i++) // Output next 512 values
 		output[i] = isaac32(state);
 
-	if (notsame(output, data(RANDVECT_OUTPUT), 512))
+	if (notsame(output, data(RANDVECT_OUTPUT), output_size))
 		fail("Failed to reproduce output shown in randvect.txt");
 	
 
@@ -110,12 +150,12 @@ void test_output()
 	isaac32_copyState(state, (void*) data(RESEEDED_STATE));
 
 	for (int i = 0; i < LargePrime; i++)
-			isaac32(state); // Discard large prime number of values
+		isaac32(state); // Discard large prime number of values
 	
-	for (int i = 0; i < 512; i++) // Output next 512 values
+	for (int i = 0; i < output_size; i++) // Output next 512 values
 		output[i] = isaac32(state);
 
-	if (notsame(output, data(LARGEPRIME_OUTPUT), 512))
+	if (notsame(output, data(LARGEPRIME_OUTPUT), output_size))
 		fail("Failed to produce correct output after large prime test");
 
 
@@ -128,10 +168,10 @@ void test_output()
 			for (int bytes = 0; bytes < 1024; bytes += 4) // 4 bytes per value
 				isaac32(state); // Discard first 1 GiB values
 	
-	for (int i = 0; i < 512; i++) // Output next 512 values
+	for (int i = 0; i < output_size; i++) // Output next 512 values
 		output[i] = isaac32(state);
 
-	if (notsame(output, data(GIBIBYTE_OUTPUT), 512))
+	if (notsame(output, data(GIBIBYTE_OUTPUT), output_size))
 		fail("Failed to produce correct output after 1 GiB test");
 	
 	printf("PASS\n");
@@ -142,7 +182,7 @@ void test_output()
 void test_initialization()
 {
 	ISAAC32 state;
-	uint32_t testseed[1024];
+	uint32_t testseed[seed_size];
 	
 	printf("    - Checking isaac32_init: ");
 	fflush(stdout);
@@ -170,10 +210,10 @@ void test_initialization()
 	
 	testseed[0] = 0;
 	testseed[1] = 1;
-	for (int i = 2; i < 1024; i++)
+	for (int i = 2; i < seed_size; i++)
 		testseed[i] = testseed[i-1] + testseed[i-2];
 
-	isaac32_seed(testseed, (1024*4), state);
+	isaac32_seed(testseed, seed_size, state);
 	
 	if (notsame(state, data(FIBONACCI_STATE), ISAAC32_STATESIZE))
 		fail("State incorrect after being seeded with Fibonacci sequence");
@@ -181,7 +221,7 @@ void test_initialization()
 	
 	// Seeding with data from randvect.txt
 
-	isaac32_seed(data(RANDVECT_OUTPUT), (512*4), state);
+	isaac32_seed(data(RANDVECT_OUTPUT), (output_size*4), state);
 	
 	if (notsame(state, data(RANDVECT_STATE), ISAAC32_STATESIZE))
 		fail("State incorrect after being seeded with randvect data");
@@ -190,10 +230,11 @@ void test_initialization()
 }
 
 
+
 void test_combined()
 {
 	ISAAC32 state1, state2;
-	uint32_t output[512];
+	uint32_t output[output_size];
 	
 	printf("    - Checking combined usage: ");
 	fflush(stdout);
@@ -202,17 +243,17 @@ void test_combined()
 	
 	for (int i = 0; i < LargePrime; i++)
 	{
-		for (int j = 0; j < 512; j++)
+		for (int j = 0; j < output_size; j++)
 			output[j] = isaac32(state1);
 			
-		isaac32_seed(output, (512*4), state2);
+		isaac32_seed(output, (output_size*4), state2);
 		isaac32_copyState(state1, state2);
 	}
 	
-	for (int i = 0; i < 512; i++)
+	for (int i = 0; i < output_size; i++)
 		output[i] = isaac32(state1);
 
-	if (notsame(output, data(COMBINED_OUTPUT), 512))
+	if (notsame(output, data(COMBINED_OUTPUT), output_size))
 		fail("Combined usage results in incorrect results");
 
 	printf("PASS\n");	
@@ -239,7 +280,7 @@ int notsame(uint32_t *data1, uint32_t *data2, int size)
 
 
 
-// Call this function where needed to dump hex values to stdout
+// Not needed by this program, but it's how the values in data() were produced
 void dump_hex(uint32_t *data, int size)
 {
 	printf("\n\n");
@@ -431,8 +472,7 @@ void *data(int data_type)
         0x0e60b62c, 0x00000000, 0x00000000, 0x00000000, 0x00000000
 	};
 
-
-	static uint32_t randvect_state[260] = {
+	static uint32_t randvect_state[ISAAC32_STATESIZE] = {
         0x0b1bf816, 0xa92d883e, 0xaa31a716, 0xb34e1ac1, 0x93df381d, 
         0x493aeee8, 0xa1598d9a, 0x38b63ea9, 0x1fff0306, 0x487ad841, 
         0xb5cd1931, 0xee82f2b9, 0x2734cfec, 0x9ab53c94, 0x1271530d, 
@@ -487,7 +527,7 @@ void *data(int data_type)
         0xc061b67c, 0x00000000, 0x00000000, 0x00000000, 0x00000000
 	};
 
-	static uint32_t randvect_output[512] = {
+	static uint32_t randvect_output[output_size] = {
         0xf650e4c8, 0xe448e96d, 0x98db2fb4, 0xf5fad54f, 0x433f1afb, 
         0xedec154a, 0xd8370487, 0x46ca4f9a, 0x5de3743e, 0x88381097, 
         0xf1d444eb, 0x823cedb6, 0x6a83e1e0, 0x4a5f6355, 0xc7442433, 
@@ -593,7 +633,7 @@ void *data(int data_type)
         0x9d855e89, 0x4bb5af29
 	};
 
-	static uint32_t largeprime_output[512] = {
+	static uint32_t largeprime_output[output_size] = {
         0xfa485f6c, 0x07dd9649, 0x455ae935, 0x9205fa8c, 0xa04f35c1, 
         0x89b83101, 0x74863752, 0x2e387fa7, 0x53eee159, 0xde59d08d, 
         0x19698d35, 0xa3330eb7, 0x420c66e8, 0x4afd74eb, 0xf8e6763c, 
@@ -699,7 +739,7 @@ void *data(int data_type)
         0xf9c8ce5e, 0x135382b2
 	};
 
-	static uint32_t gibibyte_output[512] = {
+	static uint32_t gibibyte_output[output_size] = {
 		0xac8bf9ef, 0xb82f33ff, 0xeff289b7, 0xe3becb8c, 0x1e96324a, 
         0x77578c80, 0x3dbcf6e3, 0xa028ed90, 0x964fac33, 0xb333f361, 
         0xa2606ce6, 0xed8020f3, 0xbee0a71e, 0x143b4b41, 0x83f93b1e, 
@@ -805,7 +845,7 @@ void *data(int data_type)
         0x783edf63, 0xec71d242
 	};
 
-	static uint32_t combined_output[512] = {
+	static uint32_t combined_output[output_size] = {
         0xcc4ce3f0, 0x1a911791, 0x07f51a1a, 0x3f475b2a, 0x31d50d89, 
         0xbafb1aeb, 0x10476f79, 0xbafae751, 0xe79a787d, 0x2c699b0d, 
         0x341e2ad6, 0x263bdb6e, 0xa36a6e0f, 0xb8eeb662, 0x461cd3b8, 
