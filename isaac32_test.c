@@ -243,8 +243,13 @@ void test_combined()
 	
 	for (int i = 0; i < LargePrime; i++)
 	{
-		for (int j = 0; j < output_size; j++)
-			output[j] = isaac32(state1);
+		if (i%2 == 0)
+		{
+			for (int j = 0; j < output_size; j++)
+				output[j] = isaac32(state1);
+		} else {
+			isaac32_read(output, (output_size*4), state1);
+		}
 			
 		isaac32_seed(output, (output_size*4), state2);
 		isaac32_copyState(state1, state2);

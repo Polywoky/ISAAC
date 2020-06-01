@@ -4,8 +4,8 @@ A new implementation of the 32-bit Isaac PRNG in the C Programming language.
 
 ISAAC (Indirection, Shift, Accumulate, Add, and Count) is a cryptographically secure pseudorandom number generator and a stream cipher designed by Robert J. Jenkins Jr. in 1993. The original code can be found here: [ISAAC: a fast cryptographic random number generator](http://burtleburtle.net/bob/rand/isaacafa.html)
 
-This project was created to make using ISAAC in your C programs simple and easy, while also adding the ability to have multiple instances of ISAAC existing simultaneously. Achieving this came at a cost of lower speed compared to the original code, but
-it still remains a reasonably fast and easy method of producing high-quality cryptographically secure pseudorandom numbers.
+This project was created to make using ISAAC in C programs simple and easy, while also adding the ability to have multiple instances of ISAAC existing simultaneously. Achieving this came at a cost of lower speed compared to the original code, but
+it still remains a reasonably fast method of producing high-quality cryptographically secure pseudorandom numbers.
 
 ## Using The Code
 
@@ -21,14 +21,14 @@ Step 2, declare one or more variables to store the state of the PRNG:
 ISAAC32 state1, state2;
 ```
 
-Step 3, Either seed the state or initialize it unseeded:
+Step 3, either seed the state or initialize it unseeded:
 
 ```C
 isaac32_seed(seed_data, seed_data_size, state1);
 isaac32_init(state2);
 ```
 
-Step 4, Read data from the PRNG:
+Step 4, read data from the PRNG:
 
 ```C
 value = isaac32(state1);
@@ -37,13 +37,13 @@ isaac32_read(output, output_size, state2);
 
 ### Notes:
 
-- ISAAC32 uses a 1024 byte seed.
-  - Seeds less than 1024 bytes will be padded with zeros to produce 1024 bytes.
-  - Seeds more than 1024 bytes will be truncated to 1024 bytes.
+- ISAAC32 uses a 1024 byte seed
+  - Seeds less than 1024 bytes will be padded with zeros to produce 1024 bytes
+  - Seeds more than 1024 bytes will be truncated to 1024 bytes
 - Using isaac32_init(state) is identical to using isaac_seed("", 0, state)
-- Size values used in isaac32_seed and isaac32_read are size in bytes.
-- isaac32() returns a 32-bit (4-byte) number.
-- If the number of bytes being read using isaac32_read() is not a multiple of four, then isaac32_read() will generate a multiple of four bytes and discard the ones it didn't need.
+- Size values used in isaac32_seed and isaac32_read are size in bytes
+- isaac32() returns a 32-bit (4-byte) number
+- If the number of bytes being read using isaac32_read() is not a multiple of four, then isaac32_read() will generate a multiple of four bytes and discard the ones it didn't need
 
 ## Files
 
